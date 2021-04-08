@@ -1,0 +1,314 @@
+---
+title: "DSC680 Project1 - College Recommendation Engine - Part1"
+author: "Amie Davis"
+date: "9 April, 2021"
+output:
+  pdf_document: default
+  word_document: default
+---
+# Data Sources:
+Scorecard data from the US Department of Education 
+https://collegescorecard.ed.gov/data/
+
+# References:
+https://www.listendata.com/2015/06/simplest-dimensionality-reduction-with-r.html
+
+# Load Libraries
+
+```{r libs, message=FALSE}
+library(readr)
+library(dplyr)
+library(plyr)
+library(corrplot)
+```
+
+# 1. Import the Data
+
+```{r load, message=FALSE}
+
+# Load college data
+college_df <- read_csv("Data/Scorecard/MERGED2018_19_PP.csv",
+  na =c("NULL", "PrivacySuppressed")
+)
+
+```
+
+# 2. Retain specific features
+
+```{r retain}
+
+retain_df <- college_df %>% select(
+UNITID,    #Unique Identifier
+SAT_AVG,
+ACTCMMID,    #ACT Mid-point
+TUITIONFEE_OUT,    #Out of state tuition
+LOCALE,
+LATITUDE,
+LONGITUDE,
+ADM_RATE_ALL,
+UGDS,     #Size
+DISTANCEONLY,     #Online Flag
+C200_4_POOLED,    # 4 Yr Completion Rate
+RET_PT4_POOLED_SUPP,    # 3 Yr Retention Rate
+DBRR1_FED_UGNOCOMP_RT,
+DBRR4_FED_UGCOMP_RT,
+DBRR1_PP_UG_RT,
+C100_4_POOLED,
+FTFTPCTFLOAN_POOLED_SUPP,
+DBRR5_FED_UG_RT,
+DBRR5_PP_UG_RT,
+DBRR10_FED_UG_RT,
+DBRR10_PP_UG_RT
+)
+```
+
+```{r priv_fix}
+
+# Handle NPT41_PRIV
+# Private school students with reported income < $30
+# Public schools show as NA
+# Set to same value as public field
+college_df$NPT41_PRIV[is.na(college_df$NPT41_PRIV)] <- college_df$NPT41_PUB[is.na(college_df$NPT41_PRIV)]
+
+# Set negative outlier to zero
+college_df$NPT41_PRIV[college_df$NPT41_PRIV < 0] <- 0   
+```
+
+# 3. Feature Reduction
+
+```{r drop_na, include=TRUE}
+
+# Original matrix dimensions
+dim(college_df)
+
+# Remove columns with only NULL values
+college_df <- Filter(function(x)!all(is.na(x)), college_df)
+
+# Remove columns with only 0 values
+college_df[, -which(numcolwise(sum)(college_df) == 0)]
+
+dim(college_df)
+```
+
+```{r unness, include=TRUE}
+
+# Remove unnecessary features
+  college_df[ ,c(
+    "T4APPROVALDATE", #Approval Date
+"INSTURL", # Institution URL
+"NPCURL", #Pricing URL
+"ACCREDAGENCY",
+"ACCREDCODE",
+"POOLYRS200",       # Part of Formula
+"ICLEVEL",
+"CDR3_DENOM",       # Part of Formula
+"POOLYRSRET_PT",    # Part of Formula
+"SCHTYPE",          # Same as CONTROL field
+"PLUS_DEBT_ALL_N",  # Part of Formula
+"DBRR1_FED_UGNOCOMP_N",    # Part of Formula
+"DBRR4_FED_UGCOMP_NUM",    # Part of Formula
+"DBRR4_FED_UGCOMP_DEN",
+"DBRR1_PP_UG_DEN",     # Part of Formula
+"DBRR1_PP_UG_NUM",
+"DBRR4_PP_UG_DEN",
+"DBRR4_PP_UG_NUM",
+"DBRR4_FED_UG_NUM",
+"DBRR4_FED_UG_DEN",
+"POOLYRS100",       # Part of Formula
+"FTFTPCTFLOAN_POOLED_SUPP",
+"DBRR5_FED_UG_NUM",
+"DBRR5_FED_UG_DEN",
+"DBRR5_PP_UG_NUM",
+"DBRR5_PP_UG_DEN",
+"DBRR10_FED_UG_DEN",
+"DBRR10_FED_UG_NUM",
+"DBRR10_PP_UG_NUM",
+"DBRR10_PP_UG_NUM"
+)] <- list(NULL)
+
+```
+```{r}
+warnings()
+```
+
+```{r rm_missing, include=TRUE}
+
+# Remove variables having high missing percentage (50%)
+college_df <- college_df[, colMeans(is.na(college_df)) <= .5]
+dim(college_df)
+    
+```
+
+```{r nearZeroVar, include=TRUE}
+
+# Remove Zero and Near Zero-Variance Predictors
+#    install.packages("caret")
+library(caret)
+
+nzv <- nearZeroVar(college_df)
+college_df <- college_df[, -nzv]
+dim(college_df)
+    
+```
+
+```{r corr, include=TRUE}
+
+# Look for correlation
+
+# Separate numeric columns
+num_df <- select_if(college_df, is.numeric) 
+
+# Replace null values with 99999
+num_df[is.na(num_df)] <- 99999
+
+# Calculate correlation matrix
+cor_matrix <- cor(num_df)
+
+# Find attributes that are highly corrected
+highlyCorrelated <- findCorrelation(cor_matrix, cutoff=0.7)
+
+# Identifying Variable Names of Highly Correlated Variables
+highlyCorCol <- colnames(num_df)[highlyCorrelated]
+
+# Print highly correlated attributes
+#highlyCorCol
+
+# Remove highly correlated variables and create a new dataset
+college_df <- college_df[, -which(colnames(college_df) %in% highlyCorCol)]
+dim(college_df)
+
+```
+
+```{r retain2}
+
+#Add back in retained columns
+college_df <- cbind(retain_df, college_df)
+dim(college_df)
+
+```
+
+# 4. Apply filters
+
+```{r filter}
+
+# Create subset to include only institutions that primarily offer bachelor's degrees
+college_df <- filter(college_df, PREDDEG == 3)
+college_df[ ,c("PREDDEG")] <- list(NULL)
+
+# Create subset to remove colleges 
+#college_df <- filter(college_df, PREDDEG == 3)
+
+dim(college_df)
+
+```
+# 5. Re-Label data fields
+
+```{r new_vars, include=TRUE}
+
+names(college_df)[names(college_df) == "ACTCMMID"] <- "ACT_MEDIAN"
+names(college_df)[names(college_df) == "TUITIONFEE_OUT"] <- "TUITION_OUT_ST"
+names(college_df)[names(college_df) == "UGDS"] <- "SIZE"
+names(college_df)[names(college_df) == "DISTANCEONLY"] <- "ONLINE_ONLY"
+names(college_df)[names(college_df) == "INSTNM"] <- "SCHOOL_NAME"
+names(college_df)[names(college_df) == "MAIN"] <- "MAIN_CAMPUS"
+names(college_df)[names(college_df) == "NUMBRANCH"] <- "NUM_BRANCH"
+names(college_df)[names(college_df) == "CONTROL"] <- "OWNERSHIP"
+names(college_df)[names(college_df) == "NUM41_PRIV"] <- "PVT_INCOME_0_30K"
+names(college_df)[names(college_df) == "NUM42_PRIV"] <- "PVT_INCOME_30_40K"
+names(college_df)[names(college_df) == "TUITIONFEE_IN"] <- "TUITION_IN_ST"
+names(college_df)[names(college_df) == "INEXPFTE"] <- "INSTR_EXP_PER_FTE"
+names(college_df)[names(college_df) == "DEBT_N"] <- "MEDIAN_DEBT"
+names(college_df)[names(college_df) == "C200_4_POOLED"] <- "Y4_COMPLETION_RT"
+names(college_df)[names(college_df) == "CDR3"] <- "Y3_LN_DEFAULT_RT"
+names(college_df)[names(college_df) == "DEBT_N"] <- "MEDIAN_DEBT"
+names(college_df)[names(college_df) == "C100_4_POOLED"] <- "Y4_COMPLETION_RT_POOLED"
+names(college_df)[names(college_df) == "RET_PT4_POOLED_SUPP"] <- "PT_RETENTION_RT"
+names(college_df)[names(college_df) == "PLUS_DEBT_INST_MD"] <- "MEDIAN_PLUS_LN_DEBT"
+names(college_df)[names(college_df) == "PLUS_DEBT_ALL_COMP_MD_SUPP"] <- "MEDIAN_PLUS_LN_DEBT_GRADS"
+names(college_df)[names(college_df) == "DBRR1_FED_UGNOCOMP_RT"] <- "UG_INCOMP_1Y_REPAY_RT"
+names(college_df)[names(college_df) == "DBRR4_FED_UGCOMP_RT"] <- "UG_GRAD_4Y_REPAY_RT"
+names(college_df)[names(college_df) == "DBRR1_PP_UG_RT"] <- "UG_PLUS_1Y_REPAY_RT"
+names(college_df)[names(college_df) == "DBRR4_PP_UG_RT"] <- "UG_PLUS_4Y_REPAY_RT"
+names(college_df)[names(college_df) == "BBRR2_FED_UG_DFLT"] <- "Y2_LN_DEFAULT_RT"
+names(college_df)[names(college_df) == "BBRR2_FED_UG_DLNQ_SUPP"] <- "Y2_LN_DELINQ_RT"
+names(college_df)[names(college_df) == "BBRR2_FED_UGCOMP_FBR_SUPP"] <- "UG_GRAD_2Y_FORBEAR_RT"
+names(college_df)[names(college_df) == "LPPPLUS_CNT"] <- "NUM_STU_PLUS_LN_BAL"
+names(college_df)[names(college_df) == "FEDSCHCD"] <- "FED_SCHOOL_CD"
+names(college_df)[names(college_df) == "FTFTPCTPELL_POOLED_SUPP"] <- "PELL_GRANT_AWD_RT"
+names(college_df)[names(college_df) == "FTFTPCTFLOAN_POOLED_SUPP"] <- "FED_LN_AWD_RT"
+names(college_df)[names(college_df) == "DBRR5_FED_UG_RT"] <- "Y5_UG_REPAY_RT"
+names(college_df)[names(college_df) == "DBRR5_PP_UG_RT"] <- "Y5_PLUS_LN_REPAY_RT"
+names(college_df)[names(college_df) == "BBRR2_FED_UG_PAIDINFULL_SUPP"] <- "FED_UG_PAIDINFULL"
+```
+
+# 5. Convert data types
+```{r typ, include=TRUE}
+
+college_df$ONLINE_ONLY <- factor(college_df$ONLINE_ONLY)
+college_df$LOCALE <- factor(college_df$LOCALE)
+college_df$MAIN_CAMPUS <- factor(college_df$MAIN_CAMPUS)
+college_df$OWNERSHIP <- factor(college_df$OWNERSHIP)
+college_df$REGION <- factor(college_df$REGION)
+college_df$ST_FIPS <- factor(college_df$ST_FIPS)
+
+```
+
+
+# 5. Handle null values
+```{r nul, include=TRUE}
+
+# If admission rate is NA, set to 100%
+college_df$ADM_RATE_ALL[is.na(college_df$ADM_RATE_ALL)]= 1
+
+# If school doesn't collect test scores, set to 0
+college_df$SAT_AVG[is.na(college_df$SAT_AVG)]= 0
+college_df$ACT_MEDIAN[is.na(college_df$ACT_MEDIAN)]= 0
+
+# If no rate, set to 0
+college_df$Y4_COMPLETION_RT[is.na(college_df$Y4_COMPLETION_RT)]= 0
+college_df$PT_RETENTION_RT[is.na(college_df$PT_RETENTION_RT)]= 0
+college_df$UG_INCOMP_1Y_REPAY_RT[is.na(college_df$UG_INCOMP_1Y_REPAY_RT)]= 0
+college_df$UG_GRAD_4Y_REPAY_RT[is.na(college_df$UG_GRAD_4Y_REPAY_RT)]= 0
+college_df$UG_PLUS_1Y_REPAY_RT[is.na(college_df$UG_PLUS_1Y_REPAY_RT)]= 0
+college_df$Y4_COMPLETION_RT_POOLED[is.na(college_df$Y4_COMPLETION_RT_POOLED)]= 0
+college_df$Y3_LN_DEFAULT_RT[is.na(college_df$Y3_LN_DEFAULT_RT)]= 0
+college_df$Y2_LN_DEFAULT_RT[is.na(college_df$Y2_LN_DEFAULT_RT)]= 0
+college_df$Y2_LN_DELINQ_RT[is.na(college_df$Y2_LN_DELINQ_RT)]= 0
+college_df$UG_GRAD_2Y_FORBEAR_RT[is.na(college_df$UG_GRAD_2Y_FORBEAR_RT)]= 0
+college_df$FED_LN_AWD_RT[is.na(college_df$FED_LN_AWD_RT)]= 0
+college_df$Y5_UG_REPAY_RT[is.na(college_df$Y5_UG_REPAY_RT)]= 0
+college_df$Y5_PLUS_LN_REPAY_RT[is.na(college_df$Y5_PLUS_LN_REPAY_RT)]= 0
+
+college_df$SIZE[is.na(college_df$SIZE)]= 0
+college_df$TUITION_OUT_ST[is.na(college_df$TUITION_OUT_ST)]= 0
+college_df$TUITION_IN_ST[is.na(college_df$TUITION_IN_ST)]= 0
+college_df$SIZE[is.na(college_df$SIZE)]= 0
+college_df$MEDIAN_PLUS_LN_DEBT[is.na(college_df$MEDIAN_PLUS_LN_DEBT)]= 0
+college_df$INSTR_EXP_PER_FTE[is.na(college_df$INSTR_EXP_PER_FTE)]= 0
+college_df$NUM_STU_PLUS_LN_BAL[is.na(college_df$NUM_STU_PLUS_LN_BAL)]= 0
+
+```
+
+# 6. Review Features
+
+```{r col_str, include=TRUE}
+
+# Use list to review all fields in df
+str(college_df, list.len=ncol(college_df))
+```
+
+```{r summ, include=TRUE}
+
+# Summary Statistics
+summary(college_df)
+
+```
+   
+# 4. Output Data Frame
+```{r output, eval=FALSE}
+
+# Output file for further analysis
+write.csv(college_df,"Data/Scorecard/Cleaned_Scorecard.csv")
+
+```
+
