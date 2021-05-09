@@ -12,5 +12,8 @@ Uses unsupervised learning to determine clusters of colleges.  Given a specific 
 - College_Recommender_Paper.pdf - Read for some background and methodology
 - College_Recommender_Presentation.pptx - In case you just want to flip through the slide deck
 - Part1_Data_Prep.Rmd - R Markdown file - Data Preparation & Exploratory Data Analysis
+- Part1_Data_Prep.pdf - PDF of Data Preparation & Exploratory Data Analysis
 - Part2_EDA.pbix - MS PowerBI file - Visualizations
+- Part2_EDA.pdf - PDF of Visualizations
 - Part3_Model.ipynb - Jupyter Notebook Python file - Modeling & Application
+- Part3_Model.PDF - PDF of Modeling & Application
